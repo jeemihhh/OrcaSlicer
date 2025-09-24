@@ -1,0 +1,53 @@
+name: Release Windows (tag or manual)
+
+on:
+  push:
+    tags:
+      - 'v*'          # 自动触发：推送 v* 标签
+  workflow_dispatch:   # 手动触发：可在 Actions 页面选择 tag
+    inputs:
+      tag:
+        description: 'Tag to build (e.g. v2.3.1)'
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout specified tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}   # 手动选 tag / 自动取 tag
+          lfs: true
+
+      - name: Setup MSVC
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Install CMake 3.31.6
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: 3.31.6
+
+      - name: Install NSIS & Perl
+        run: |
+          choco install nsis strawberryperl
+
+      - name: Build & Pack
+        shell: cmd
+        run: |
+          call build_release_vs2022.bat deps
+          call build_release_vs2022.bat pack
+          call build_release_vs2022.bat slicer
+
+      - name: Create Installer
+        working-directory: build
+        run: cpack -G NSIS
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v1
+        with:
+          files: build/OrcaSlicer*.exe
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}   # 把包挂到对应 Tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
